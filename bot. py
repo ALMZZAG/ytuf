@@ -1,0 +1,153 @@
+import json
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram import Update
+
+DATA_FILE = "bot_data.json"
+
+def load_data():
+    try:
+        with open(DATA_FILE, "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {
+            "admins": [6324969976],  # ايديك انت كأول أدمين
+            "banned_users": [],
+            "subscribers": [],
+            "sections": []
+        }
+
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
+data = load_data()
+
+def is_admin(user_id):
+    return user_id in data["admins"]
+
+async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_admin(user_id):
+        await update.message.reply_text("🚫 ليس لديك صلاحية.")
+        return
+
+    if not context.args:
+        await update.message.reply_text("✏️ أرسل: /addadmin <user_id>")
+        return
+
+    try:
+        new_admin = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ الرجاء إدخال رقم معرف (user_id) صحيح.")
+        return
+
+    if new_admin not in data["admins"]:
+        data["admins"].append(new_admin)
+        save_data(data)
+        await update.message.reply_text(f"✅ تم رفع {new_admin} مشرف.")
+    else:
+        await update.message.reply_text("⚠️ هذا المستخدم مشرف بالفعل.")
+
+async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_admin(user_id):
+        await update.message.reply_text("🚫 ليس لديك صلاحية.")
+        return
+
+    if not context.args:
+        await update.message.reply_text("✏️ أرسل: /ban <user_id>")
+        return
+
+    try:
+        ban_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ الرجاء إدخال رقم معرف (user_id) صحيح.")
+        return
+
+    if ban_id not in data["banned_users"]:
+        data["banned_users"].append(ban_id)
+        save_data(data)
+        await update.message.reply_text(f"🚫 تم حظر المستخدم {ban_id}.")
+    else:
+        await update.message.reply_text("⚠️ المستخدم محظور بالفعل.")
+
+async def add_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_admin(user_id):
+        await update.message.reply_text("🚫 ليس لديك صلاحية.")
+        return
+
+    section_name = " ".join(context.args).strip()
+    if not section_name:
+        await update.message.reply_text("✏️ أرسل: /addsection <اسم القسم>")
+        return
+
+    if section_name not in data["sections"]:
+        data["sections"].append(section_name)
+        save_data(data)
+        await update.message.reply_text(f"✅ تم إضافة القسم: {section_name}")
+    else:
+        await update.message.reply_text("⚠️ القسم موجود بالفعل.")
+
+async def subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in data["subscribers"]:
+        data["subscribers"].append(user_id)
+        save_data(data)
+        await update.message.reply_text("✅ تم تفعيل الاشتراك بنجاح.")
+    else:
+        await update.message.reply_text("✅ أنت مشترك بالفعل.")
+
+async def pre_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id in data["banned_users"]:
+        await update.message.reply_text("🚫 أنت محظور من استخدام البوت.")
+        return False
+    if user_id not in data["subscribers"]:
+        await update.message.reply_text("🔒 يرجى الاشتراك أولاً باستخدام /subscribe.")
+        return False
+    return True
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "👋 مرحبًا بك في بوت الإدارة.\n"
+        "استخدم /help لمعرفة الأوامر."
+    )
+
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    help_text = (
+        "/start - بدء البوت\n"
+        "/help - عرض الأوامر\n"
+        "/subscribe - الاشتراك في البوت\n"
+        "/addadmin <user_id> - إضافة مشرف (للمشرفين فقط)\n"
+        "/ban <user_id> - حظر مستخدم (للمشرفين فقط)\n"
+        "/addsection <اسم القسم> - إضافة قسم جديد (للمشرفين فقط)\n"
+    )
+    await update.message.reply_text(help_text)
+
+async def some_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    can_proceed = await pre_process(update, context)
+    if not can_proceed:
+        return
+    await update.message.reply_text("هذا أمر تجريبي بعد التحقق.")
+
+from telegram.ext import ApplicationBuilder, CommandHandler
+
+BOT_TOKEN = "7783947140:AAGhtkkJkUz3MvkOyXAM2fK8cFBcr1nc3L0"
+
+def main():
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(CommandHandler("subscribe", subscribe))
+    app.add_handler(CommandHandler("addadmin", add_admin))
+    app.add_handler(CommandHandler("ban", ban_user))
+    app.add_handler(CommandHandler("addsection", add_section))
+    app.add_handler(CommandHandler("test", some_command))
+
+    print("Bot is running...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
